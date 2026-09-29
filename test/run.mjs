@@ -105,7 +105,10 @@ await writeJson(join(home, 'storages', 'workspace.json'), {
   },
 });
 
-const liveSession = { id: 'session-cccc-live' };
+/* Sessions held in the in-memory store; `session-aaaa-archived` is merely attached. */
+const store = new Map([['session-aaaa-archived', { id: 'session-aaaa-archived' }]]);
+/* The one session with a turn actually running. */
+const runningSessionId = 'session-cccc-live';
 const log = [];
 const calls = [];
 const workspaceRecord = {
@@ -143,8 +146,25 @@ const ctx = {
         },
       };
     }
-    if (name === 'sessions') return { get: (id) => (id === liveSession.id ? liveSession : undefined) };
-    if (name === 'agents') return { get: () => undefined };
+    if (name === 'sessions') {
+      return {
+        get: (id) => store.get(id),
+        liveEntryFor: (session) => (store.get(session.id) === session ? { id: session.id, session } : undefined),
+        detachEntered: (entry) => {
+          calls.push(`detach-enter:${entry.id}`);
+          store.delete(entry.id);
+        },
+      };
+    }
+    if (name === 'agents') {
+      return {
+        get: (id) => {
+          calls.push(`agent-lookup:${id}`);
+          if (id === runningSessionId) return { status: 'running' };
+          return store.has(id) ? { status: 'idle' } : undefined;
+        },
+      };
+    }
     if (name === 'storageDomain') {
       return {
         get: (domain) => (domain === 'session_projcache'
@@ -247,7 +267,8 @@ async function expectThrow(name, run, fragment) {
 }
 
 await expectThrow('deleteSession() refuses an unarchived session', () => service.deleteSession('session-bbbb-not-archived'), 'not archived');
-await expectThrow('deleteSession() refuses a live session', () => service.deleteSession('session-cccc-live'), 'still open');
+await expectThrow('deleteSession() refuses a session whose turn is running', () => service.deleteSession('session-cccc-live'), 'is running');
+check('a running session is left attached and untouched', !calls.includes('detach-enter:session-cccc-live'), calls.join(','));
 await expectThrow('deleteSession() rejects an empty id', () => service.deleteSession(''), 'session id is required');
 check('guarded removals left the archive set alone', !unarchived.includes('session-bbbb-not-archived') && !unarchived.includes('session-cccc-live'));
 check('guarded removals left the files alone', await fs.stat(join(home, 'sessions', workspaceKey, 'session-cccc-live')).then(() => true, () => false));
@@ -273,6 +294,11 @@ check('guarded removals never detached their workspace', !calls.some((call) => c
 check('the removal notice follows the actual deletion',
   calls.indexOf('emit:api-session/removed:session-aaaa-archived') > calls.indexOf('cache-delete:session-aaaa-archived'),
   calls.join(','));
+check('the guard asks the agent registry rather than the session store', calls.includes('agent-lookup:session-aaaa-archived'), calls.join(','));
+check('an attached session is detached from the in-memory store', calls.includes('detach-enter:session-aaaa-archived'), calls.join(','));
+check('an idle agent does not block that deletion', calls.includes('agent-lookup:session-aaaa-archived') && calls.includes('detach-enter:session-aaaa-archived'), calls.join(','));
+check('the in-memory store no longer holds the deleted session', !store.has('session-aaaa-archived'), [...store.keys()].join(','));
+check('persistence stops before the cache and the files go', calls.indexOf('detach-enter:session-aaaa-archived') < calls.indexOf('cache-delete:session-aaaa-archived'), calls.join(','));
 
 const after = await service.list();
 check('the deleted session is no longer listed', !after.sessions.some((session) => session.sessionId === 'session-aaaa-archived'), after.sessions.map((s) => s.sessionId).join(','));

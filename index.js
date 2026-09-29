@@ -242,7 +242,7 @@ class ArchivedSessions {
    * @param signal - cancellation supplied by the Remote carrier.
    * @returns what was removed.
    * @throws RemoteError `archived-sessions/not-archived` when the id is not archived,
-   * `archived-sessions/active` when the session is still live and must be closed first.
+   * `archived-sessions/active` when a turn is still running and must be stopped first.
    */
   async deleteSession(sessionId, signal) {
     const id = String(sessionId ?? '');
@@ -252,10 +252,15 @@ class ArchivedSessions {
     if (!archived.includes(id)) {
       throw new Error(`archived-sessions: ${id} is not archived; refusing to delete it from disk`);
     }
-    const live = this.ctx.get('sessions')?.get?.(id);
+    /*
+     * Membership in the in-memory session store only means the session is
+     * attached — open in the UI, or held by an idle agent. That is not a reason
+     * to refuse. What makes deletion unsafe is a turn actually running, because
+     * its writer would put the log back after the directory is gone.
+     */
     const agent = this.ctx.get('agents')?.get?.(id);
-    if (live !== undefined || agent !== undefined) {
-      throw new Error(`archived-sessions: ${id} is still open; close the session before deleting it`);
+    if (agent?.status === 'running') {
+      throw new Error(`archived-sessions: ${id} is running; stop its turn before deleting it from disk`);
     }
     signal?.throwIfAborted?.();
 
@@ -272,6 +277,22 @@ class ArchivedSessions {
     // Release the owning workspace's accounting so no empty row survives it.
     for (const workspace of registry?.list?.() ?? []) {
       if (workspace?.sessionIds?.includes?.(id) === true) await workspace.detachSession?.(id);
+    }
+    /*
+     * Then drop the in-memory session the way its owning fiber would: an
+     * attached session keeps a persistence writer alive, and that writer would
+     * recreate the log directory we are about to remove. `detachEntered` is
+     * idempotent and emits the paired `session/disposed` notification.
+     */
+    const store = this.ctx.get('sessions');
+    const attached = store?.get?.(id);
+    if (attached !== undefined) {
+      try {
+        const entry = store?.liveEntryFor?.(attached);
+        if (entry !== undefined) store?.detachEntered?.(entry);
+      } catch (error) {
+        this.ctx.logger?.warn?.(`archived-sessions: could not detach session ${id} from the session store: ${String(error)}`);
+      }
     }
 
     // Prefer the projection cache's own storage domain: it keeps the in-memory

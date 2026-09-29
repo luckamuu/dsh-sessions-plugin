@@ -147,21 +147,22 @@ DSH 可以把会话**归档**，但归档只是把会话从主列表里收起来
 | --- | --- | --- | --- |
 | 0 | 校验 id | — | 空 id 直接拒绝 |
 | 1 | 校验归档归属 | `workspaceRegistry.archivedSessionIds` | 不在归档集合里 → `not archived`，拒绝删除 |
-| 2 | 拒绝活会话 | `ctx.get('sessions')` / `ctx.get('agents')` | 会话仍打开 → `still open`，要求先关闭 |
+| 2 | 拒绝正在运行的会话 | `ctx.get('agents').get(id).status === 'running'` | 正在跑回合 → `is running`，要求先停止；仅仅还开在界面里不再阻止删除 |
 | 3 | 停止会话活动 | `workspaceRegistry.stopSessionActivity(id)` | 避免删除时仍有活动在写文件 |
 | 4 | 摘掉归档标记 | `workspaceRegistry.unarchiveSession(id)` | 持久写入 `storages/workspace.json`；删除中断也不会留下「注册表里有、却打不开」的 id |
 | 5 | 解除工作区归属 | `Workspace.detachSession(id)` | 避免留下空的工作区行 |
-| 6 | 删除投影缓存 | `storageDomain.get('session_projcache').table('sessions').delete(id)` | 保持内存表与记录文件一致；失败只告警不中断 |
-| 7 | 删除整个会话目录 | `fs.rm(<DSH_HOME>/sessions/<工作区键>/<会话 id>/, { recursive: true, force: true })` | **整目录**删除：旧版本的日志文件如果留在旁边，读取端会把会话「复活」 |
-| 8 | 删除缓存文件 | `fs.rm(<DSH_HOME>/storages/session_projcache/sessions/<会话 id>.json)` | 与第 6 步互为保险 |
-| 9 | 通知界面 | `ctx.emit('api-session/removed', id)` | 只有这条通知会让侧边栏的会话行消失 |
+| 6 | 摘掉内存里的会话 | `ctx.get('sessions').detachEntered(liveEntryFor(session))` | 附加在内存里的会话会继续持有日志写入器，删完文件也会被写回来 |
+| 7 | 删除投影缓存 | `storageDomain.get('session_projcache').table('sessions').delete(id)` | 保持内存表与记录文件一致；失败只告警不中断 |
+| 8 | 删除整个会话目录 | `fs.rm(<DSH_HOME>/sessions/<工作区键>/<会话 id>/, { recursive: true, force: true })` | **整目录**删除：旧版本的日志文件如果留在旁边，读取端会把会话「复活」 |
+| 9 | 删除缓存文件 | `fs.rm(<DSH_HOME>/storages/session_projcache/sessions/<会话 id>.json)` | 与第 6 步互为保险 |
+| 10 | 通知界面 | `ctx.emit('api-session/removed', id)` | 只有这条通知会让侧边栏的会话行消失 |
 
 返回值：`{ sessionId, directory, cache }`，表示目录与缓存是否真的被移除。
 
 ## 安全边界
 
 - **只会删除归档集合里的会话。** 正在使用的、未归档的会话即便手动调用端点也会被拒绝。
-- **拒绝删除仍打开的会话**，即使它已被归档（`still open`）。
+- **拒绝删除正在运行的会话**：只有确实在跑回合（`agent.status === 
 - **不删除附件等共享内容**，只删会话自己的目录与投影缓存。
 - **子代理（subagent）会话不在归档集合里**，因此不会出现在列表里，也不会被删。
 - **不用 shell 命令删除**，删除走 `node:fs`，参数是解析出的绝对路径。
@@ -330,6 +331,14 @@ CI（`.github/workflows/test.yml`）在 ubuntu 与 windows 上跑无依赖的两
 </details>
 
 <details>
+<summary><b>删除失败：… is running; stop its turn before deleting it from disk</b></summary>
+
+该会话正在跑一个回合（`ctx.agents.get(id).status === 'running'`），此时删文件会让仍在写入的日志重新出现。
+
+处理：在界面里结束该会话当前的回合（或等它跑完）再删除。只是「会话还开在界面里」不会再被拒绝——插件会把它从内存会话表里摘掉，再删文件。
+</details>
+
+<details>
 <summary><b>想删的会话不在列表里</b></summary>
 
 子代理（subagent）会话不进入归档集合，因此不在本列表中——本插件不处理它们。
@@ -361,7 +370,7 @@ CI（`.github/workflows/test.yml`）在 ubuntu 与 windows 上跑无依赖的两
 
 - Recursive size/file count per session; sessions whose directory is already gone are flagged.
 - Two-step confirmation, irreversible afterwards; the only operation in the panel is deletion.
-- Refuses to touch anything that is not in the archived set, and refuses sessions that are still open.
+- Refuses to touch anything that is not in the archived set, and refuses a session whose turn is still running.
 - Deletes in the order that leaves no ghost rows: stop activity → unarchive → detach workspace → drop projection cache → remove the whole session directory → notify the UI.
 - Self-checks Host/browser build skew and disables the action with an explanation instead of failing with a 404.
 - Zero runtime dependencies, no build step, Chinese/English UI.
