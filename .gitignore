@@ -1,0 +1,12 @@
+# Test fixtures are generated on every run.
+test/tmp/
+
+# Nothing in this plugin needs installed packages; keep stray ones out.
+node_modules/
+
+# Editor and OS noise.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

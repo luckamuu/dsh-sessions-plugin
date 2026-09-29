@@ -1,0 +1,38 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Host half — service, Remote contract, deletion flow
+        run: node test/run.mjs
+
+      - name: Browser half — registrations, rendering, delete interaction
+        run: node test/client.test.mjs
+
+      - name: Real framework activation (skips without DSH_INSTALL)
+        run: node test/activation.test.mjs
+
+      - name: The duplicate-mount guard must fail on the mutant
+        shell: bash
+        run: |
+          if VERIFY_CLIENT=test/mutant-client.js node test/client.test.mjs; then
+            echo "the mutant passed: the duplicate-mount guard is broken"
+            exit 1
+          fi
+          echo "the mutant failed as expected"
