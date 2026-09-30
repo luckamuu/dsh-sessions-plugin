@@ -3,6 +3,7 @@
 > 一个 **DeepSeek Harness** 插件：在侧边栏加一个「已归档会话」页面，列出当前归档的会话，每行只有一个操作——**彻底删除**（连同会话目录与投影缓存一起从硬盘上抹掉）。
 
 ![DSH](https://img.shields.io/badge/DSH-0.2.0--rc.1-blue)
+[![release](https://img.shields.io/github/v/release/luckamuu/dsh-sessions-plugin?sort=semver&label=release)](https://github.com/luckamuu/dsh-sessions-plugin/releases)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![dependencies](https://img.shields.io/badge/runtime%20dependencies-none-brightgreen)
 ![tests](https://img.shields.io/badge/tests-passing-brightgreen)
@@ -16,6 +17,7 @@
 - [功能](#功能)
 - [为什么需要它](#为什么需要它)
 - [安装](#安装)
+- [版本与 Releases](#版本与-releases)
 - [使用](#使用)
 - [删除到底做了什么](#删除到底做了什么)
 - [安全边界](#安全边界)
@@ -23,6 +25,7 @@
 - [目录结构](#目录结构)
 - [开发](#开发)
 - [测试](#测试)
+- [更新日志](CHANGELOG.md)
 - [常见问题](#常见问题)
 - [兼容性](#兼容性)
 - [卸载](#卸载)
@@ -121,6 +124,63 @@ DSH 可以把会话**归档**，但归档只是把会话从主列表里收起来
 
 </details>
 
+## 版本与 Releases
+
+当前版本 **v1.0.0**，与 `package.json` 的 `version` 字段一致。每个版本都对应一个同名的 Git tag 与
+[GitHub Release](https://github.com/luckamuu/dsh-sessions-plugin/releases)，逐版本变更见 [CHANGELOG.md](CHANGELOG.md)。
+
+### 安装指定版本
+
+本插件零依赖、无构建步骤，**Release 里没有也不需要额外的构建产物**——GitHub 自动附带的
+`Source code (zip)` / `Source code (tar.gz)` 就是全部内容。三种取版本的写法：
+
+```bash
+# 1. 取最新版（默认分支）
+git clone https://github.com/luckamuu/dsh-sessions-plugin.git dsh-sessions-plugin
+
+# 2. 取某个已发布版本（推荐：结果可复现）
+git clone --branch v1.0.0 --depth 1 https://github.com/luckamuu/dsh-sessions-plugin.git dsh-sessions-plugin
+
+# 3. 不克隆，安装时直接填 Git 地址
+github:luckamuu/dsh-sessions-plugin
+```
+
+取到目录后按[安装](#安装)一节操作（插件页填绝对路径，然后**完全重启 DSH**）。注意目录安装记的是
+`link:`，插件此后一直读这个目录，所以别把它放在之后会被删掉的位置。
+
+### 版本号规范
+
+遵循[语义化版本](https://semver.org/lang/zh-CN/) `MAJOR.MINOR.PATCH`，tag 一律为附注 tag `vX.Y.Z`：
+
+| 位 | 何时递增 | 例子 |
+| --- | --- | --- |
+| `MAJOR` | 破坏性变更：改动端点契约（重命名／删除端点、改参数或返回结构）、改动安装方式，或跟进 DSH 的破坏性接口变更而需要用户重新安装 | `v1.0.0` → `v2.0.0` |
+| `MINOR` | 向后兼容地新增功能：新增端点、面板新增操作、新增语言、新增统计字段 | `v1.0.0` → `v1.1.0` |
+| `PATCH` | 向后兼容地修缺陷：修删除流程、修拒绝分支、修文案与本地化 | `v1.0.0` → `v1.0.1` |
+
+只有**新增**端点会被算作 `MINOR` 而不是 `PATCH`：面板会用 `list()` 返回的 `endpoints` 自检宿主与界面
+是不是同一版本，新增端点会让旧宿主在新界面前暴露差异（面板提示重启，而不是静默失败）。
+
+### 发布流程（维护者）
+
+1. 改动合入 `main`，三套测试全绿（CI 见 [`.github/workflows/test.yml`](.github/workflows/test.yml)）。
+2. 三处同步：`package.json` 的 `version`、`CHANGELOG.md`（把 `Unreleased` 的内容归到新版本号下）、
+   README 顶部的 DSH 兼容基线（基线变了才改）。
+3. 提交后打附注 tag 并推送：
+
+   ```bash
+   git tag -a v1.0.1 -m "v1.0.1"
+   git push origin main --follow-tags
+   ```
+
+4. 在 [Releases](https://github.com/luckamuu/dsh-sessions-plugin/releases) 页面以该 tag 新建 Release，
+   标题写 `v1.0.1`，说明直接取 `CHANGELOG.md` 里对应版本的段落。
+
+```bash
+# 装了 GitHub CLI 的话，第 3、4 步可以合成一步
+gh release create v1.0.1 --title v1.0.1 --generate-notes
+```
+
 ## 使用
 
 面板结构（示意）：
@@ -165,7 +225,7 @@ DSH 可以把会话**归档**，但归档只是把会话从主列表里收起来
 ## 安全边界
 
 - **只会删除归档集合里的会话。** 正在使用的、未归档的会话即便手动调用端点也会被拒绝。
-- **拒绝删除正在运行的会话**：只有确实在跑回合（`agent.status === 
+- **拒绝删除正在运行的会话**：只有确实在跑回合（`agent.status === 'running'`）的会话会被拒绝，要求先停止；只是「会话还开在界面里」不再阻止删除。 
 - **不删除附件等共享内容**，只删会话自己的目录与投影缓存。
 - **子代理（subagent）会话不在归档集合里**，因此不会出现在列表里，也不会被删。
 - **不用 shell 命令删除**，删除走 `node:fs`，参数是解析出的绝对路径。
@@ -227,12 +287,13 @@ dsh-sessions-plugin/
 │   └── en.json
 ├── icon.svg              # 插件图标
 ├── test/                 # 自测（无需安装任何依赖）
-│   ├── run.mjs           # 宿主：服务、Remote 契约、删除流程（42 项）
+│   ├── run.mjs           # 宿主：服务、Remote 契约、删除流程（48 项）
 │   ├── client.test.mjs   # 前端：注册、渲染、删除交互（47 项）
 │   ├── activation.test.mjs # 真实 Cordis + Typert 协议激活（13 项，缺框架则 SKIP）
 │   ├── mutant-client.js  # 故意还原「重复挂载」bug 的变体，用于校验守卫有效
 │   └── stubs/            # 与官方实现逐行对齐的协议替身
 ├── README.md
+├── CHANGELOG.md          # 逐版本变更与版本号规范
 ├── LICENSE
 ├── NOTICE.md             # 第三方代码来源（框架包的 MIT 归属）
 └── .github/workflows/test.yml
@@ -248,6 +309,7 @@ dsh-sessions-plugin/
 | `cordis.patch.yml` | `insert` 一个 id 为 `archived-sessions` 的插件条目 |
 | `index.js` | 服务注册、归档集合读取、删除流程；导出 `ArchivedSessions`、`SERVICE_KEY` 与 default |
 | `client.js` | 通过 `window.__ModuleLoader__.load` 注册；挂载 Remote 贡献；注册 `main`（key 与 `sidebar.panellist` 的 id 一致）与侧边栏入口 |
+| `CHANGELOG.md` | 逐版本变更；版本号规范与发布流程见[版本与 Releases](#版本与-releases) |
 
 ## 开发
 
@@ -261,7 +323,7 @@ dsh-sessions-plugin/
 三套验证都不需要安装依赖，直接用 Node 运行（任何支持 ESM 顶层 await 的 Node；CI 用 20）：
 
 ```bash
-node test/run.mjs             # 42/42：宿主服务、Remote 绑定与标记、删除全流程与全部拒绝分支
+node test/run.mjs             # 48/48：宿主服务、Remote 绑定与标记、删除全流程与全部拒绝分支
 node test/client.test.mjs     # 47/47：模块加载契约、注册、渲染、删除交互、版本偏移提示（中英）
 node test/activation.test.mjs # 13/13：真实 Cordis + 真实 Typert 协议的激活与端点声明
 ```
@@ -388,10 +450,20 @@ CI（`.github/workflows/test.yml`）在 ubuntu 与 windows 上跑无依赖的两
 
 **Install** — clone the repo, then in DSH open the **Plugins** page, click **Install**, and enter the absolute path of the cloned directory. Restart DSH if the panel reports an older Host build.
 
+<a id="releases-and-versioning"></a>
+
+**Releases and versioning** — the current version is **v1.0.0**, matching `version` in `package.json`. Every version is a matching Git tag and [GitHub Release](https://github.com/luckamuu/dsh-sessions-plugin/releases); see [CHANGELOG.md](CHANGELOG.md) for what changed. Releases carry no extra build artifacts — the plugin has no dependencies and no build step, so the auto-attached `Source code` archives are everything. To pin a version, clone the tag instead of the default branch:
+
+```bash
+git clone --branch v1.0.0 --depth 1 https://github.com/luckamuu/dsh-sessions-plugin.git dsh-sessions-plugin
+```
+
+Versions follow [SemVer](https://semver.org/): `MAJOR` for a breaking endpoint-contract or install change (or a DSH interface break that forces a reinstall), `MINOR` for backwards-compatible additions such as a new endpoint, and `PATCH` for backwards-compatible fixes. Adding an endpoint counts as `MINOR` because the panel compares the `endpoints` list from `list()` to detect Host/browser skew.
+
 **Verify**
 
 ```bash
-node test/run.mjs             # 42/42 host half
+node test/run.mjs             # 48/48 host half
 node test/client.test.mjs     # 47/47 browser half
 node test/activation.test.mjs # 13/13 against the real framework (SKIP without DSH_INSTALL)
 ```
