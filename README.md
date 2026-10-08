@@ -2,7 +2,7 @@
 
 > 一个 **DeepSeek Harness** 插件：在侧边栏加一个「已归档会话」页面，列出当前归档的会话，每行只有一个操作——**彻底删除**（连同会话目录与投影缓存一起从硬盘上抹掉）。
 
-![DSH](https://img.shields.io/badge/DSH-0.2.0--rc.1-blue)
+![DSH](https://img.shields.io/badge/DSH-0.2.0--rc.2-blue)
 [![release](https://img.shields.io/github/v/release/luckamuu/dsh-sessions-plugin?sort=semver&label=release)](https://github.com/luckamuu/dsh-sessions-plugin/releases)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![dependencies](https://img.shields.io/badge/runtime%20dependencies-none-brightgreen)
